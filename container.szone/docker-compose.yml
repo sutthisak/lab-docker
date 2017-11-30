@@ -1,0 +1,78 @@
+version: '2'
+services:
+  mongodb:
+    image: "mongo:3"
+    restart: always
+    networks:
+      - back-tier
+    volumes:
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+      - ./data/mongodb:/data/db
+  elasticsearch:
+    image: "elasticsearch:2"
+    restart: always
+    networks:
+      - back-tier
+    depends_on:
+      - mongodb
+    command: "elasticsearch -Des.cluster.name='graylog'"
+    volumes:
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+      - ./data/elasticsearch:/usr/share/elasticsearch/data
+  graylog:
+    image: graylog2/server:2.1.1-1
+    restart: always
+    networks:
+      - back-tier
+    depends_on:
+      - mongodb
+      - elasticsearch
+    volumes:
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+      - ./data/graylog/data/journal:/usr/share/graylog/data/journal
+      - ./conf/graylog:/usr/share/graylog/data/config
+    environment:
+      GRAYLOG_PASSWORD_SECRET: replace_with_graylog_secret
+      GRAYLOG_ROOT_PASSWORD_SHA2: replace_with_graylog_password
+      GRAYLOG_WEB_ENDPOINT_URI: http://192.168.15.11:9000/api
+    links:
+      - mongodb:mongo
+      - elasticsearch:elasticsearch
+    ports:
+      - 9000:9000
+      - 12201:12201/udp
+      - 514:514/udp
+  revprox:
+    image: nginx:stable-alpine
+    restart: always
+    depends_on:
+      - graylog
+    networks:
+      - back-tier
+    volumes:
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+      - ./conf/nginx/conf/nginx.conf:/etc/nginx/conf/nginx.conf:ro
+      - ./conf/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./log/nginx:/var/log/nginx
+      - ./data/nginx/www:/var/www/html
+    links:
+      - graylog:graylog
+    ports:
+      - 80:80
+networks:
+  front-tier:
+    driver: bridge
+    ipam:
+     config:
+       - subnet: 192.168.116.0/24
+         gateway: 192.168.116.1
+  back-tier:
+    driver: bridge
+    ipam:
+     config:
+       - subnet: 192.168.117.0/24
+         gateway: 192.168.117.1
